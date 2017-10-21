@@ -2,11 +2,13 @@ package at.ac.is161505.hastag;
 
 import at.ac.is161505.hashtag.HashtagCount1c;
 import org.apache.hadoop.io.Text;
-import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+
+import static org.junit.Assert.assertTrue;
 
 /**
  * This file is part of hashtag.
@@ -41,28 +43,34 @@ import java.util.List;
  * <p>
  * Created by n17405180 on 21.10.17.
  */
-public class HashtagMostUsedByUserMapTests {
+public class JoinResultsReduceTests {
 
     @Test
-    public void shouldReturnMostUser() {
+    public void shouldJoinResults() throws IOException, InterruptedException {
+
+        HashtagCount1c.JoinResultsReduce a = new HashtagCount1c.JoinResultsReduce();
 
         List<Text> users = new ArrayList<Text>();
+        users.add(new Text("user1"));
 
-        for(int i=0; i<10; i++) {
-            users.add(new Text("user1"));
-        }
+        List<Text> counts = new ArrayList<Text>();
+        counts.add(new Text("1234"));
 
-        for(int i=0; i<15; i++) {
-            users.add(new Text("user2"));
-        }
+        a.reduce(new Text("USER|#tag1"), users, null);
+        a.reduce(new Text("USER|#tag2"), users, null);
+        a.reduce(new Text("USER|#tag3"), users, null);
+        a.reduce(new Text("USER|#tag4"), users, null);
+        a.reduce(new Text("USER|#tag5"), users, null);
 
-        for(int i=0; i<20; i++) {
-            users.add(new Text("user3"));
-        }
+        a.reduce(new Text("TOPN|#tag1"), counts, null);
+        a.reduce(new Text("TOPN|#tag2"), counts, null);
+        a.reduce(new Text("TOPN|#tag3"), counts, null);
+        a.reduce(new Text("TOPN|#tag4"), counts, null);
+        a.reduce(new Text("TOPN|#tag5"), counts, null);
 
-        String mostUser = HashtagCount1c.HashtagMostUsedByUserReduce.getMostUser(users);
 
-        Assert.assertTrue("user3".equals(mostUser));
+        assertTrue(a.userMap.size() == 5);
+        assertTrue(a.topList.size() == 5);
+
     }
-
 }

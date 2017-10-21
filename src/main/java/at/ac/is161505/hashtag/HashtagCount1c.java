@@ -9,6 +9,8 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.MultipleInputs;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
@@ -18,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -111,6 +114,27 @@ public class HashtagCount1c extends Configured implements Tool {
          * JOB 4 joins the outputs of job 2 and job 3
          */
 
+        Job job4 = Job.getInstance(getConf(), "hashtagtouser");
+        Path job4Output = new Path(outputDir + "/job4");
+        job4.setJarByClass(this.getClass());
+
+        FileOutputFormat.setOutputPath(job4, job4Output);
+
+        MultipleInputs.addInputPath(job4, job3Output, TextInputFormat.class,
+                JoinResultsUserMap.class);
+
+        MultipleInputs.addInputPath(job4, job2Output, TextInputFormat.class,
+                JoinResultsTopMap.class);
+
+        job4.setReducerClass(JoinResultsReduce.class);
+        job4.setOutputKeyClass(Text.class);
+        job4.setOutputValueClass(Text.class);
+
+        int job4Ok = job4.waitForCompletion(true) ? 0 : 1;
+
+        if(job4Ok != 0) {
+            return job4Ok;
+        }
 
 
         return 0;
@@ -191,5 +215,76 @@ public class HashtagCount1c extends Configured implements Tool {
             return user;
         }
     }
+
+    public static class JoinResultsUserMap extends Mapper<LongWritable, Text, Text, Text> {
+
+        public void map(LongWritable offset, Text lineText, Context context)
+                throws IOException, InterruptedException {
+
+            String[] splitted = lineText.toString().trim().split("\\s+");
+            if(splitted.length == 2) {
+                String hashtag = splitted[0];
+                String user = splitted[1];
+                context.write(new Text("USER|"+hashtag), new Text(user));
+            }
+
+        }
+    }
+
+    public static class JoinResultsTopMap extends Mapper<LongWritable, Text, Text, Text> {
+
+        public void map(LongWritable offset, Text lineText, Context context)
+                throws IOException, InterruptedException {
+
+            String[] splitted = lineText.toString().trim().split("\\s+");
+            if(splitted.length == 2) {
+                String hashtag = splitted[0];
+                int count = Integer.parseInt(splitted[1]);
+                context.write(new Text("TOPN|"+hashtag), new Text("CNT:"+count));
+            }
+
+        }
+
+    }
+
+    public static class JoinResultsReduce extends Reducer<Text, Text, Text, Text> {
+
+        public ArrayList<String> topList = new ArrayList<String>();
+        public Map<String,String> userMap = new HashMap<String, String>();
+
+        @Override
+        public void reduce(Text key, Iterable<Text> records, Context context)
+                throws IOException, InterruptedException {
+
+            String keyStr = key.toString();
+
+            if(keyStr.startsWith("TOPN|") && !topList.contains(keyStr.substring(5))) {
+                topList.add(keyStr.substring(5));
+            } else if (keyStr.startsWith("USER|")) {
+                String hashtag = keyStr.substring(5);
+
+                if(!userMap.containsKey(hashtag)) {
+                    if(records.iterator().hasNext()) {
+                        String user = records.iterator().next().toString();
+                        userMap.put(hashtag, user);
+                    }
+                }
+            }
+
+        }
+
+        @Override
+        protected void cleanup(Context context) throws IOException, InterruptedException {
+
+            for(String hashtag : topList) {
+                if(userMap.containsKey(hashtag)) {
+                    context.write(new Text(hashtag), new Text(userMap.get(hashtag)));
+                }
+            }
+
+        }
+    }
+
+
 
 }
