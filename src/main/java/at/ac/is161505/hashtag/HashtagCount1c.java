@@ -9,6 +9,7 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.MultipleInputs;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
@@ -18,37 +19,40 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Created by n17405180 on 21.10.17.
  */
-public class HashtagCount extends Configured implements Tool {
+public class HashtagCount1c extends Configured implements Tool {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(HashtagCount.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(HashtagCount1c.class);
 
     public static void main(String[] args) throws Exception {
-        int res = ToolRunner.run(new HashtagCount(), args);
+        int res = ToolRunner.run(new HashtagCount1c(), args);
         System.exit(res);
     }
 
     @Override
     public int run(String[] args) throws Exception {
-        Job job = Job.getInstance(getConf(), "hashtagcount");
+
+        Job job = Job.getInstance(getConf(), "hashtagtouser");
         job.setJarByClass(this.getClass());
 
         FileInputFormat.addInputPath(job, new Path(args[0]));
         FileOutputFormat.setOutputPath(job, new Path(args[1]));
 
-        job.setMapperClass(HashtagCount.Map.class);
-        job.setReducerClass(HashtagCount.Reduce.class);
+        job.setMapperClass(HashtagCount1c.UserMap.class);
+        job.setReducerClass(HashtagCount1c.UserReduce.class);
         job.setOutputKeyClass(Text.class);
-        job.setOutputValueClass(IntWritable.class);
+        job.setOutputValueClass(Text.class);
 
         return job.waitForCompletion(true) ? 0 : 1;
     }
 
-    public static class Map extends Mapper<LongWritable, Text, Text, IntWritable> {
-        private final static IntWritable one = new IntWritable(1);
+    public static class UserMap extends Mapper<LongWritable, Text, Text, Text> {
+
         private Text word = new Text();
         private long numRecords = 0;
 
@@ -57,40 +61,69 @@ public class HashtagCount extends Configured implements Tool {
         public void map(LongWritable offset, Text lineText, Context context)
                 throws IOException, InterruptedException {
 
-            String time;
             String user = "";
             String message = "";
 
             String line = lineText.toString();
             try {
                 JSONObject obj = new JSONObject(line);
-                time = obj.getString("time");
                 user = obj.getString("user");
                 message = obj.getString("message");
             } catch (JSONException e) {
                 LOGGER.error("Can't parse JSON.", e);
             }
 
-            Text currentWord = new Text();
+            Text currentWord;
+            Text currentUser;
             for (String word : EXTRATOR.extract(message)) {
                 if (word.isEmpty()) {
                     continue;
                 }
                 currentWord = new Text(word);
-                context.write(currentWord, one);
+                currentUser = new Text(user);
+                context.write(currentWord, currentUser);
             }
         }
     }
 
-    public static class Reduce extends Reducer<Text, IntWritable, Text, IntWritable> {
+    public static class UserReduce extends Reducer<Text, Text, Text, Text> {
+
         @Override
-        public void reduce(Text word, Iterable<IntWritable> counts, Context context)
+        public void reduce(Text word, Iterable<Text> users, Context context)
                 throws IOException, InterruptedException {
-            int sum = 0;
-            for (IntWritable count : counts) {
-                sum += count.get();
+
+            String mostUser = getMostUser(users);
+            if(mostUser != null) {
+                mostUser = mostUser.replace("http://twitter.com/", "");
+
+                context.write(word, new Text(mostUser));
             }
-            context.write(word, new IntWritable(sum));
+
+        }
+
+        public static String getMostUser(Iterable<Text> users) {
+
+            Map<String, Integer> userCountMap = new HashMap<String, Integer>();
+            for(Text user : users) {
+                String userStr = user.toString();
+                int val = 0;
+                if(userCountMap.containsKey(userStr)) {
+                    val = userCountMap.get(userStr);
+                }
+                userCountMap.put(userStr, val+1);
+            }
+
+            int most = 0;
+            String user = null;
+
+            for(String currentUser : userCountMap.keySet()) {
+                if(userCountMap.get(currentUser) > most) {
+                    most = userCountMap.get(currentUser);
+                    user = currentUser;
+                }
+            }
+
+            return user;
         }
     }
 
