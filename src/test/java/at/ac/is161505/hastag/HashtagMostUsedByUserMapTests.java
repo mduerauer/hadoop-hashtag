@@ -1,6 +1,6 @@
 package at.ac.is161505.hastag;
 
-import at.ac.is161505.hashtag.HashtagCount1c;
+import at.ac.is161505.hashtag.HashtagCount1cOld;
 import org.apache.hadoop.io.Text;
 import org.junit.Assert;
 import org.junit.Test;
@@ -41,7 +41,7 @@ import java.util.List;
  * <p>
  * Created by n17405180 on 21.10.17.
  */
-public class UserMapTests {
+public class HashtagMostUsedByUserMapTests {
 
     @Test
     public void shouldReturnMostUser() {
@@ -60,7 +60,7 @@ public class UserMapTests {
             users.add(new Text("user3"));
         }
 
-        String mostUser = HashtagCount1c.UserReduce.getMostUser(users);
+        String mostUser = HashtagCount1cOld.UserReduce.getMostUser(users);
 
         Assert.assertTrue("user3".equals(mostUser));
     }
